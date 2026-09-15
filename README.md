@@ -101,6 +101,15 @@ This training application follows an **offline-first architecture** with abstrac
 - **File Storage**: Local filesystem for any file-based features
 - **Authentication**: Cookie-based mock authentication
 
+Document uploads are stored locally under `ContosoDashboard/AppData/uploads`, outside
+`wwwroot`, using generated storage keys. The training scanner fails closed when a scan
+is unavailable and only provides deterministic validation for local exercises; production
+deployments require a real antivirus integration. To reset document exercises, stop the
+application, reset the LocalDB database using the training database procedure, and remove
+the contents of `ContosoDashboard/AppData/uploads` before restarting. The storage and
+scanner interfaces are deliberately isolated so a future Azure Blob and production
+scanner implementation can replace the training services without changing document rules.
+
 **Production Migration Path:**
 - **Database**: Azure SQL Database (replace connection string, no code changes)
 - **File Storage**: Azure Blob Storage (swap `IFileStorageService` implementation)

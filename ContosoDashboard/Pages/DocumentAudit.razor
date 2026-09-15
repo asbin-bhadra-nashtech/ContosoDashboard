@@ -1,0 +1,47 @@
+@page "/document-audit"
+@attribute [Authorize(Roles = "Administrator")]
+@using System.Security.Claims
+@inject DocumentAuditService AuditService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Document Audit - ContosoDashboard</PageTitle>
+
+<div class="container-fluid">
+    <h1>Document Audit</h1>
+    <p class="text-muted">Review document activity and usage patterns.</p>
+    @if (report == null)
+    {
+        @if (denied) { <div class="alert alert-danger">You are not authorized to view document audit data.</div> } else { <p><em>Loading audit data...</em></p> }
+    }
+    else
+    {
+        <div class="row mb-4"><div class="col-md-3"><div class="card"><div class="card-body"><h6>Total Documents</h6><strong class="display-6">@report.TotalDocuments</strong></div></div></div><div class="col-md-3"><div class="card"><div class="card-body"><h6>Activity Events</h6><strong class="display-6">@activities.Count</strong></div></div></div></div>
+        <div class="mb-3"><label class="form-label" for="audit-action">Filter activity</label><select id="audit-action" class="form-select" @bind="actionFilter" @bind:after="LoadActivities"><option value="">All actions</option><option>Upload</option><option>Download</option><option>Replace</option><option>MetadataUpdate</option><option>Share</option><option>Delete</option></select></div>
+        <div class="row g-4"><div class="col-md-4"><h5>File Types</h5><ul class="list-group">@foreach (var metric in report.MostUploadedTypes) { <li class="list-group-item d-flex justify-content-between"><span>@metric.Name</span><strong>@metric.Count</strong></li> }</ul></div><div class="col-md-4"><h5>Active Uploaders</h5><ul class="list-group">@foreach (var metric in report.MostActiveUploaders) { <li class="list-group-item d-flex justify-content-between"><span>@metric.Name</span><strong>@metric.Count</strong></li> }</ul></div><div class="col-md-4"><h5>Access Patterns</h5><ul class="list-group">@foreach (var metric in report.AccessPatterns) { <li class="list-group-item d-flex justify-content-between"><span>@metric.Name</span><strong>@metric.Count</strong></li> }</ul></div></div>
+        <h5 class="mt-5">Recent Activity</h5><div class="table-responsive"><table class="table"><thead><tr><th>When</th><th>Action</th><th>Document</th><th>User</th><th>Details</th></tr></thead><tbody>@foreach (var activity in activities) { <tr><td>@activity.OccurredDate.ToLocalTime().ToString("g")</td><td>@activity.Action</td><td>@(activity.Document?.Title ?? "Deleted document")</td><td>@activity.User.DisplayName</td><td>@activity.Details</td></tr> }</tbody></table></div>
+    }
+</div>
+
+@code {
+    private DocumentAuditReport? report;
+    private List<DocumentActivity> activities = new();
+    private string actionFilter = string.Empty;
+    private bool denied;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (int.TryParse(state.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            report = await AuditService.GetReportAsync(userId);
+            denied = report == null;
+            activities = await AuditService.GetActivitiesAsync(userId, actionFilter);
+        }
+    }
+
+    private async Task LoadActivities()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (int.TryParse(state.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)) activities = await AuditService.GetActivitiesAsync(userId, actionFilter);
+    }
+}

@@ -32,6 +32,7 @@ public class TaskService : ITaskService
             .Include(t => t.AssignedUser)
             .Include(t => t.CreatedByUser)
             .Include(t => t.Project)
+            .Include(t => t.Documents)
             .Where(t => t.AssignedUserId == userId)
             .OrderByDescending(t => t.Priority)
             .ThenBy(t => t.DueDate)
@@ -44,6 +45,7 @@ public class TaskService : ITaskService
             .Include(t => t.AssignedUser)
             .Include(t => t.CreatedByUser)
             .Include(t => t.Project)
+            .Include(t => t.Documents)
             .Where(t => t.AssignedUserId == userId);
 
         if (status.HasValue)

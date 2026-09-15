@@ -126,6 +126,10 @@
                                 <button class="btn btn-sm btn-outline-primary" @onclick="() => ViewTaskDetails(task.TaskId)">
                                     <i class="bi bi-eye"></i>
                                 </button>
+                                @if (task.Documents.Any())
+                                {
+                                    <a class="btn btn-sm btn-outline-secondary ms-1" href="/documents?projectId=@task.ProjectId&taskId=@task.TaskId" title="View task documents"><i class="bi bi-paperclip"></i> @task.Documents.Count</a>
+                                }
                             </td>
                         </tr>
                     }

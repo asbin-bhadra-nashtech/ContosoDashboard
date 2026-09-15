@@ -36,8 +36,10 @@ public class ProjectService : IProjectService
             .Union(memberProjects)
             .Include(p => p.ProjectManager)
             .Include(p => p.Tasks)
+            .ThenInclude(t => t.Documents)
             .Include(p => p.ProjectMembers)
             .ThenInclude(pm => pm.User)
+            .Include(p => p.Documents)
             .OrderByDescending(p => p.CreatedDate)
             .ToListAsync();
 
@@ -50,8 +52,11 @@ public class ProjectService : IProjectService
             .Include(p => p.ProjectManager)
             .Include(p => p.Tasks)
             .ThenInclude(t => t.AssignedUser)
+            .Include(p => p.Tasks)
+            .ThenInclude(t => t.Documents)
             .Include(p => p.ProjectMembers)
             .ThenInclude(pm => pm.User)
+            .Include(p => p.Documents)
             .FirstOrDefaultAsync(p => p.ProjectId == projectId);
 
         if (project == null) return null;

@@ -151,6 +151,8 @@
                         }
                     </div>
                 </div>
+
+                <div class="card mt-4"><div class="card-header d-flex justify-content-between"><h5 class="mb-0">Project Documents</h5><a class="btn btn-sm btn-primary" href="/documents">Manage documents</a></div><div class="card-body">@if (!project.Documents.Any()) { <p class="text-muted mb-0">No documents are associated with this project.</p> } else { <div class="list-group list-group-flush">@foreach (var document in project.Documents.OrderByDescending(d => d.UploadedDate)) { <a class="list-group-item list-group-item-action" href="/documents/@document.DocumentId/content?download=true"><strong>@document.Title</strong><span class="text-muted ms-2">@document.Category</span></a> }</div> }</div></div>
             </div>
 
             <div class="col-md-4">

@@ -8,6 +8,7 @@ public interface IDashboardService
 {
     Task<DashboardSummary> GetDashboardSummaryAsync(int userId);
     Task<List<Announcement>> GetActiveAnnouncementsAsync();
+    Task<List<DocumentSummary>> GetRecentDocumentsAsync(int userId);
 }
 
 public class DashboardService : IDashboardService
@@ -40,10 +41,30 @@ public class DashboardService : IDashboardService
                 .CountAsync(),
 
             UnreadNotifications = await _context.Notifications
-                .CountAsync(n => n.UserId == userId && !n.IsRead)
+                .CountAsync(n => n.UserId == userId && !n.IsRead),
+
+            DocumentCount = await _context.Documents
+                .CountAsync(d => d.UploadedByUserId == userId)
         };
 
         return summary;
+    }
+
+    public async Task<List<DocumentSummary>> GetRecentDocumentsAsync(int userId)
+    {
+        return await _context.Documents.AsNoTracking()
+            .Where(d => d.UploadedByUserId == userId)
+            .Include(d => d.UploadedByUser)
+            .Include(d => d.Project)
+            .OrderByDescending(d => d.UploadedDate)
+            .Take(5)
+            .Select(d => new DocumentSummary
+            {
+                DocumentId = d.DocumentId, Title = d.Title, Category = d.Category,
+                OriginalFileName = d.OriginalFileName, FileSize = d.FileSize,
+                UploadedDate = d.UploadedDate, UploaderName = d.UploadedByUser.DisplayName,
+                ProjectName = d.Project == null ? null : d.Project.Name, ProjectId = d.ProjectId, TaskId = d.TaskId
+            }).ToListAsync();
     }
 
     public async Task<List<Announcement>> GetActiveAnnouncementsAsync()
@@ -67,4 +88,5 @@ public class DashboardSummary
     public int TasksDueToday { get; set; }
     public int ActiveProjects { get; set; }
     public int UnreadNotifications { get; set; }
+    public int DocumentCount { get; set; }
 }

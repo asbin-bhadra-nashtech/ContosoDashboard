@@ -6,6 +6,7 @@
 @inject IDashboardService DashboardService
 @inject INotificationService NotificationService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IDocumentService DocumentService
 
 <PageTitle>Dashboard - ContosoDashboard</PageTitle>
 
@@ -51,6 +52,9 @@
                         <p class="card-text display-4 text-danger">@summary.UnreadNotifications</p>
                     </div>
                 </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card summary-card"><div class="card-body"><h5 class="card-title">Documents</h5><p class="card-text display-4 text-success">@summary.DocumentCount</p></div></div>
             </div>
         </div>
     }
@@ -118,12 +122,18 @@
             }
         </div>
     </div>
+
+    @if (recentDocuments != null && recentDocuments.Any())
+    {
+        <div class="row mt-4"><div class="col"><div class="d-flex justify-content-between"><h3>Recent Documents</h3><a href="/documents">View all</a></div><div class="list-group">@foreach (var document in recentDocuments) { <a class="list-group-item list-group-item-action" href="/documents/@document.DocumentId/content?download=true"><strong>@document.Title</strong><span class="text-muted ms-2">@document.Category, @FormatSize(document.FileSize)</span></a> }</div></div></div>
+    }
 </div>
 
 @code {
     private DashboardSummary? summary;
     private List<Announcement>? announcements;
     private List<Notification>? recentNotifications;
+    private List<DocumentSummary>? recentDocuments;
     private string userName = "User";
     private int currentUserId = 0;
 
@@ -146,6 +156,7 @@
             summary = await DashboardService.GetDashboardSummaryAsync(currentUserId);
             announcements = await DashboardService.GetActiveAnnouncementsAsync();
             recentNotifications = await NotificationService.GetUserNotificationsAsync(currentUserId);
+            recentDocuments = await DocumentService.GetRecentAsync(currentUserId, 5);
         }
     }
 
@@ -164,4 +175,6 @@
 
         return dateTime.ToString("MMM dd, yyyy");
     }
+
+    private static string FormatSize(long bytes) => bytes < 1024 * 1024 ? $"{bytes / 1024.0:0.#} KB" : $"{bytes / 1024.0 / 1024:0.##} MB";
 }

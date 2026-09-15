@@ -3,6 +3,8 @@ using ContosoDashboard.Data;
 using ContosoDashboard.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.Extensions.Options;
+using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,6 +45,12 @@ builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.Configure<DocumentStorageOptions>(builder.Configuration.GetSection("DocumentStorage"));
+builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
+builder.Services.AddScoped<IFileScanner, LocalFileScanner>();
+builder.Services.AddScoped<DocumentAuthorization>();
+builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<DocumentAuditService>();
 
 // Add HttpContextAccessor for accessing user claims
 builder.Services.AddHttpContextAccessor();
@@ -106,6 +114,16 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapBlazorHub();
+app.MapGet("/documents/{documentId:int}/content", async (int documentId, HttpContext httpContext, IDocumentService documentService, CancellationToken cancellationToken) =>
+{
+    var userIdValue = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+    if (!int.TryParse(userIdValue, out var userId)) return Results.Unauthorized();
+    var content = await documentService.GetContentAsync(documentId, userId, cancellationToken);
+    if (content == null) return Results.NotFound();
+    var download = string.Equals(httpContext.Request.Query["download"], "true", StringComparison.OrdinalIgnoreCase);
+    httpContext.Response.Headers.ContentDisposition = $"{(download ? "attachment" : "inline")}; filename=\"{content.FileName.Replace("\"", string.Empty)}\"";
+    return Results.Stream(content.Content, content.ContentType, enableRangeProcessing: true);
+}).RequireAuthorization();
 app.MapFallbackToPage("/_Host");
 
 app.Run();
