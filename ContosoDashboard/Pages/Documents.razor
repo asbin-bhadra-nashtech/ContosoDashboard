@@ -30,14 +30,14 @@
                 <div class="row g-3">
                     <div class="col-md-6"><label class="form-label">Title</label><input class="form-control" @bind="title" /></div>
                     <div class="col-md-6"><label class="form-label">Category</label><select class="form-select" @bind="category"><option value="">Choose category</option>@foreach (var item in DocumentValidation.Categories) { <option value="@item">@item</option> }</select></div>
-                    <div class="col-md-6"><label class="form-label">Project</label><select class="form-select" @bind="projectId"><option value="">Personal file</option>@foreach (var project in projects) { <option value="@project.ProjectId">@project.Name</option> }</select></div>
-                    <div class="col-md-6"><label class="form-label">Task</label><select class="form-select" @bind="taskId"><option value="">No task</option>@foreach (var task in AvailableTasks) { <option value="@task.TaskId">@task.Title</option> }</select></div>
+                    <div class="col-md-6"><label class="form-label">Project</label><select class="form-select" @bind="projectId" disabled="@taskId.HasValue"><option value="">Personal file</option>@foreach (var project in projects) { <option value="@project.ProjectId">@project.Name</option> }</select>@if (taskId.HasValue) { <small class="text-muted">The task supplies its project.</small> }</div>
+                    <div class="col-md-6"><label class="form-label">Task</label><select class="form-select" @bind="taskId" @bind:after="TaskChanged"><option value="">No task</option>@foreach (var task in AvailableTasks) { <option value="@task.TaskId">@task.Title</option> }</select></div>
                     <div class="col-md-6"><label class="form-label">Tags</label><input class="form-control" @bind="tags" placeholder="budget, planning" /></div>
                     <div class="col-12"><label class="form-label">Description</label><textarea class="form-control" @bind="description"></textarea></div>
                     <div class="col-12"><label class="form-label">File</label><InputFile @key="inputKey" OnChange="SelectFile" /></div>
                 </div>
                 @if (selectedFile != null) { <p class="small text-muted mt-3 mb-0">@selectedFile.Name (@FormatSize(selectedFile.Size))</p> }
-                @if (isUploading) { <div class="progress mt-3"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 100%">Uploading...</div></div> }
+                @if (isUploading) { <div class="progress mt-3"><div class="progress-bar progress-bar-striped progress-bar-animated" style="width: @uploadProgress%">@uploadStatus (@uploadProgress%)</div></div> }
                 <div class="mt-3"><button class="btn btn-primary" disabled="@(isUploading || selectedFile == null)" @onclick="Upload">Upload</button> <button class="btn btn-link" @onclick="ToggleUpload">Cancel</button></div>
             </div>
         </div>
@@ -46,8 +46,16 @@
     @if (shareDocumentId.HasValue)
     {
         <div class="alert alert-light border d-flex align-items-center gap-2">
-            <label class="form-label mb-0" for="share-user">Share with</label>
-            <select id="share-user" class="form-select" @bind="shareUserId"><option value="">Choose a user</option>@foreach (var user in users.Where(u => u.UserId != currentUserId)) { <option value="@user.UserId">@user.DisplayName</option> }</select>
+            <label class="form-label mb-0" for="share-type">Share with</label>
+            <select id="share-type" class="form-select" @bind="shareType"><option value="user">User</option><option value="department">Department</option></select>
+            @if (shareType == "department")
+            {
+                <select class="form-select" @bind="shareDepartment"><option value="">Choose a department</option>@foreach (var department in users.Select(u => u.Department).Where(d => !string.IsNullOrWhiteSpace(d)).Distinct().OrderBy(d => d)) { <option value="@department">@department</option> }</select>
+            }
+            else
+            {
+                <select id="share-user" class="form-select" @bind="shareUserId"><option value="">Choose a user</option>@foreach (var user in users.Where(u => u.UserId != currentUserId)) { <option value="@user.UserId">@user.DisplayName</option> }</select>
+            }
             <button class="btn btn-primary" @onclick="Share">Share</button>
             <button class="btn btn-link" @onclick="ClearShare">Cancel</button>
         </div>
@@ -67,6 +75,8 @@
     private int currentUserId;
     private bool showUpload;
     private bool isUploading;
+    private int uploadProgress;
+    private string uploadStatus = string.Empty;
     private bool isError;
     private bool sharedOnly;
     private string? message;
@@ -86,6 +96,8 @@
     private int replaceInputKey;
     private int? shareDocumentId;
     private int? shareUserId;
+    private string shareType = "user";
+    private string? shareDepartment;
     private string editingTitle = string.Empty;
     private IBrowserFile? selectedFile;
     private List<DocumentSummary>? documents;
@@ -113,12 +125,13 @@
 
     private void ToggleUpload() => showUpload = !showUpload;
     private void ToggleShared() { sharedOnly = !sharedOnly; _ = LoadDocuments(); }
-    private void BeginShare(int documentId) { shareDocumentId = documentId; shareUserId = null; }
-    private void ClearShare() { shareDocumentId = null; shareUserId = null; }
+    private void BeginShare(int documentId) { shareDocumentId = documentId; shareUserId = null; shareDepartment = null; shareType = "user"; }
+    private void ClearShare() { shareDocumentId = null; shareUserId = null; shareDepartment = null; }
+    private void TaskChanged() { if (taskId.HasValue) projectId = null; }
     private async Task Share()
     {
-        if (!shareDocumentId.HasValue || !shareUserId.HasValue) { ShowError("Choose a recipient."); return; }
-        var result = await DocumentService.ShareAsync(shareDocumentId.Value, currentUserId, shareUserId, null);
+        if (!shareDocumentId.HasValue || (shareType == "user" && !shareUserId.HasValue) || (shareType == "department" && string.IsNullOrWhiteSpace(shareDepartment))) { ShowError("Choose a recipient."); return; }
+        var result = await DocumentService.ShareAsync(shareDocumentId.Value, currentUserId, shareType == "user" ? shareUserId : null, shareType == "department" ? shareDepartment : null);
         if (!result.Success) ShowError(result.Error ?? "The document could not be shared."); else { message = "Document shared."; isError = false; ClearShare(); }
     }
     private void SelectFile(InputFileChangeEventArgs args) => selectedFile = args.File;
@@ -161,23 +174,38 @@
     private async Task Upload()
     {
         if (selectedFile == null) return;
-        isUploading = true; message = null;
+        isUploading = true; uploadProgress = 0; uploadStatus = "Reading"; message = null;
         try
         {
             var fileName = selectedFile.Name;
             var fileSize = selectedFile.Size;
             var contentType = selectedFile.ContentType;
             using var memoryStream = new MemoryStream();
-            await using (var fileStream = selectedFile.OpenReadStream(DocumentValidation.MaxFileSizeBytes)) { await fileStream.CopyToAsync(memoryStream); }
+            await using (var fileStream = selectedFile.OpenReadStream(DocumentValidation.MaxFileSizeBytes))
+            {
+                var buffer = new byte[64 * 1024];
+                long totalRead = 0;
+                int read;
+                while ((read = await fileStream.ReadAsync(buffer)) > 0)
+                {
+                    await memoryStream.WriteAsync(buffer.AsMemory(0, read));
+                    totalRead += read;
+                    uploadProgress = (int)Math.Min(100, totalRead * 100 / Math.Max(1, fileSize));
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
             memoryStream.Position = 0;
             selectedFile = null;
+            uploadStatus = "Scanning";
+            uploadProgress = 100;
+            await InvokeAsync(StateHasChanged);
             var result = await DocumentService.UploadAsync(currentUserId, new DocumentUploadRequest { Title = title, Description = description, Category = category, Tags = tags, ProjectId = projectId, TaskId = taskId, FileName = fileName, FileSize = fileSize, ContentType = contentType, Content = memoryStream });
             if (!result.Success) { ShowError(result.Error ?? "Upload failed."); return; }
             message = "Document uploaded successfully."; showUpload = false; title = string.Empty; description = null; category = string.Empty; tags = null; projectId = null; taskId = null; inputKey++; await LoadDocuments();
         }
         catch (IOException) { ShowError("The file could not be read. Check its size and try again."); }
         catch (Exception) { ShowError("The document could not be uploaded. Please try again."); }
-        finally { isUploading = false; }
+        finally { isUploading = false; uploadStatus = string.Empty; uploadProgress = 0; }
     }
 
     private void ShowError(string text) { message = text; isError = true; }

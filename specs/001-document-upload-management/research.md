@@ -47,3 +47,27 @@
 **Rationale**: Up to 500 documents is modest for LocalDB, but authorization predicates must be applied in the database query before sorting and paging. Indexes should cover document owner, project, upload date, category, and share lookups. Search will use bounded string predicates over title, description, tags, uploader, and project name; the quickstart will measure representative results against the stated 2-second goal.
 
 **Alternatives considered**: Loading every document into memory before filtering was rejected because it risks leaking unauthorized data through intermediate state and does not scale to the stated list/search target.
+
+## Decision: Interpret team shares as department shares
+
+**Rationale**: The clarified requirement selects the existing `User.Department` value instead of introducing a new team entity. A department share grants read access to users whose current department matches the share while `IsActive` remains true. In-app notifications are sent once to matching users whose `InAppNotificationsEnabled` flag is true; notification preferences do not revoke access. The repository has no account-level active flag, so availability or last-login values are not treated as account activity.
+
+**Alternatives considered**: Project membership and a separate team-management entity were rejected by the clarification. Filtering access by notification preference was rejected because delivery and authorization are separate concerns.
+
+## Decision: Derive project association from a selected task
+
+**Rationale**: When `TaskId` is provided, the service loads the task and derives the effective `ProjectId` from the task. It rejects missing tasks and tasks without a project, and never trusts a conflicting client-supplied project. Direct project association remains valid only when no task is selected. This keeps authorization, storage partitioning, notifications, and persistence consistent.
+
+**Alternatives considered**: Requiring clients to submit both IDs and allowing independent task/project values were rejected because they permit stale or contradictory associations.
+
+## Decision: Use one document per upload submission
+
+**Rationale**: Each submission receives independent metadata, validation, scanning, progress, persistence, and rollback. The Blazor form captures browser metadata before opening the stream, enforces the 25 MB read limit, and reports explicit processing states. A seekable temporary/quarantine stream is preferred so scanning and storage can consume the same content without buffering the full file in memory.
+
+**Alternatives considered**: Multi-file shared metadata and multi-step per-file forms were rejected by the clarification. A large `MemoryStream` is acceptable for the existing training slice but is not the preferred production-scale design; the abstraction remains compatible with a future bounded temporary-file implementation.
+
+## Decision: Retain deleted-document identity in audit details
+
+**Rationale**: `DocumentActivity.DocumentId` remains nullable with `DeleteBehavior.SetNull`. Delete activity details store a sanitized title and identifier as structured JSON before the document row is removed, preserving historical context without retaining a live relationship. The delete activity and metadata removal should be committed in one EF transaction.
+
+**Alternatives considered**: Cascade deletion, soft delete, and new historical columns were rejected because they either destroy audit history, violate scope, or add schema beyond the clarified requirement.

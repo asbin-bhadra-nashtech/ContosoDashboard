@@ -127,3 +127,7 @@ app.MapGet("/documents/{documentId:int}/content", async (int documentId, HttpCon
 app.MapFallbackToPage("/_Host");
 
 app.Run();
+
+public partial class Program
+{
+}

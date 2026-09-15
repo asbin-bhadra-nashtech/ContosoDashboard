@@ -1,6 +1,7 @@
 using ContosoDashboard.Data;
 using ContosoDashboard.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using System.Linq.Expressions;
 
 namespace ContosoDashboard.Services;
@@ -24,7 +25,7 @@ public sealed class DocumentService : IDocumentService
 
     public async Task<DocumentResult> UploadAsync(int requestingUserId, DocumentUploadRequest request, CancellationToken cancellationToken = default)
     {
-        var validation = await ValidateRequestAsync(requestingUserId, request, cancellationToken);
+        var (validation, effectiveProjectId) = await ValidateRequestAsync(requestingUserId, request, cancellationToken);
         if (validation != null) return DocumentResult.Failure(validation);
 
         if (request.Content.CanSeek) request.Content.Position = 0;
@@ -34,17 +35,16 @@ public sealed class DocumentService : IDocumentService
         string? relativePath = null;
         try
         {
-            relativePath = await _storage.UploadAsync(request.Content, requestingUserId.ToString(), request.ProjectId?.ToString(), request.FileName, cancellationToken);
+            relativePath = await _storage.UploadAsync(request.Content, requestingUserId.ToString(), effectiveProjectId?.ToString(), request.FileName, cancellationToken);
             var document = new Document
             {
                 Title = request.Title.Trim(), Description = request.Description?.Trim(), Category = request.Category,
                 Tags = request.Tags?.Trim(), OriginalFileName = DocumentValidation.GetSafeFileName(request.FileName),
                 FilePath = relativePath, FileType = request.ContentType, FileSize = request.FileSize,
-                UploadedByUserId = requestingUserId, ProjectId = request.ProjectId, TaskId = request.TaskId, UploadedDate = DateTime.UtcNow
+                UploadedByUserId = requestingUserId, ProjectId = effectiveProjectId, TaskId = request.TaskId, UploadedDate = DateTime.UtcNow
             };
             _context.Documents.Add(document);
-            await _context.SaveChangesAsync(cancellationToken);
-            _context.DocumentActivities.Add(new DocumentActivity { DocumentId = document.DocumentId, UserId = requestingUserId, Action = "Upload", Details = document.OriginalFileName });
+            _context.DocumentActivities.Add(new DocumentActivity { Document = document, UserId = requestingUserId, Action = "Upload", Details = document.Title });
             await _context.SaveChangesAsync(cancellationToken);
             await NotifyProjectMembersAsync(document, requestingUserId, cancellationToken);
             return DocumentResult.Succeeded(document);
@@ -68,7 +68,12 @@ public sealed class DocumentService : IDocumentService
             var search = request.SearchText.Trim();
             query = query.Where(d => d.Title.Contains(search) || (d.Description != null && d.Description.Contains(search)) || (d.Tags != null && d.Tags.Contains(search)) || d.UploadedByUser.DisplayName.Contains(search) || (d.Project != null && d.Project.Name.Contains(search)));
         }
-        if (request.SharedWithMeOnly) query = query.Where(d => d.Shares.Any(s => s.IsActive));
+        if (request.SharedWithMeOnly)
+        {
+            var recipient = await _context.Users.AsNoTracking().Where(u => u.UserId == requestingUserId).Select(u => new { u.UserId, u.Department }).FirstOrDefaultAsync(cancellationToken);
+            if (recipient == null) return new List<DocumentSummary>();
+            query = query.Where(d => d.Shares.Any(s => s.IsActive && (s.SharedWithUserId == recipient.UserId || (s.SharedWithDepartment != null && s.SharedWithDepartment == recipient.Department))));
+        }
         if (!string.IsNullOrWhiteSpace(request.Category)) query = query.Where(d => d.Category == request.Category);
         if (request.ProjectId.HasValue) query = query.Where(d => d.ProjectId == request.ProjectId);
         if (request.FromDate.HasValue) query = query.Where(d => d.UploadedDate >= request.FromDate.Value);
@@ -111,7 +116,7 @@ public sealed class DocumentService : IDocumentService
     {
         var document = await _context.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId, cancellationToken);
         if (document == null || !await _authorization.CanManageAsync(document, requestingUserId, cancellationToken)) return DocumentResult.Failure("You are not authorized to replace this document.");
-        var validation = await ValidateRequestAsync(requestingUserId, request, cancellationToken);
+        var (validation, effectiveProjectId) = await ValidateRequestAsync(requestingUserId, request, cancellationToken);
         if (validation != null) return DocumentResult.Failure(validation);
         if (request.Content.CanSeek) request.Content.Position = 0;
         if (!await _scanner.IsSafeAsync(request.Content, cancellationToken)) return DocumentResult.Failure("The file could not pass the safety scan.");
@@ -123,7 +128,7 @@ public sealed class DocumentService : IDocumentService
         string? newPath = null;
         try
         {
-            newPath = await _storage.UploadAsync(request.Content, requestingUserId.ToString(), document.ProjectId?.ToString(), request.FileName, cancellationToken);
+            newPath = await _storage.UploadAsync(request.Content, requestingUserId.ToString(), effectiveProjectId?.ToString(), request.FileName, cancellationToken);
             document.FilePath = newPath;
             document.OriginalFileName = DocumentValidation.GetSafeFileName(request.FileName);
             document.FileType = request.ContentType;
@@ -159,10 +164,11 @@ public sealed class DocumentService : IDocumentService
         var document = await _context.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId, cancellationToken);
         if (document == null || !await _authorization.CanManageAsync(document, requestingUserId, cancellationToken)) return false;
         var path = document.FilePath;
+        var auditDetails = JsonSerializer.Serialize(new { documentId = document.DocumentId, title = SanitizeAuditTitle(document.Title) });
         try
         {
             await _storage.DeleteAsync(path, cancellationToken);
-            _context.DocumentActivities.Add(new DocumentActivity { DocumentId = documentId, UserId = requestingUserId, Action = "Delete", Details = document.OriginalFileName });
+            _context.DocumentActivities.Add(new DocumentActivity { DocumentId = documentId, UserId = requestingUserId, Action = "Delete", Details = auditDetails });
             _context.Documents.Remove(document);
             await _context.SaveChangesAsync(cancellationToken);
             return true;
@@ -178,15 +184,22 @@ public sealed class DocumentService : IDocumentService
         var document = await _context.Documents.FirstOrDefaultAsync(d => d.DocumentId == documentId, cancellationToken);
         if (document == null || !await _authorization.CanManageAsync(document, requestingUserId, cancellationToken)) return DocumentResult.Failure("You are not authorized to share this document.");
         if (!userId.HasValue && string.IsNullOrWhiteSpace(department)) return DocumentResult.Failure("Choose a user or department.");
-        if (userId.HasValue && !await _context.Users.AnyAsync(u => u.UserId == userId && u.InAppNotificationsEnabled, cancellationToken)) return DocumentResult.Failure("The selected user is unavailable.");
+        if (userId.HasValue && !await _context.Users.AnyAsync(u => u.UserId == userId, cancellationToken)) return DocumentResult.Failure("The selected user is unavailable.");
         var normalizedDepartment = department?.Trim();
+        if (!userId.HasValue && !await _context.Users.AnyAsync(u => u.Department == normalizedDepartment, cancellationToken)) return DocumentResult.Failure("The selected department is unavailable.");
         var duplicateShare = await _context.DocumentShares.AnyAsync(s => s.DocumentId == documentId && s.IsActive && s.SharedWithUserId == userId && s.SharedWithDepartment == normalizedDepartment, cancellationToken);
         if (duplicateShare) return DocumentResult.Failure("This document is already shared with that recipient.");
         var share = new DocumentShare { DocumentId = documentId, SharedByUserId = requestingUserId, SharedWithUserId = userId, SharedWithDepartment = normalizedDepartment };
         _context.DocumentShares.Add(share);
         _context.DocumentActivities.Add(new DocumentActivity { DocumentId = documentId, UserId = requestingUserId, Action = "Share", Details = userId?.ToString() ?? department });
         await _context.SaveChangesAsync(cancellationToken);
-        if (userId.HasValue) await _notifications.CreateNotificationAsync(new Notification { UserId = userId.Value, Title = "Document shared with you", Message = $"{document.Title} is now available in Shared with Me.", Type = NotificationType.SystemAnnouncement, Priority = NotificationPriority.Informational });
+        var recipientIds = userId.HasValue
+            ? new[] { userId.Value }
+            : await _context.Users.Where(u => u.Department == normalizedDepartment && u.InAppNotificationsEnabled).Select(u => u.UserId).ToArrayAsync(cancellationToken);
+        foreach (var recipientId in recipientIds.Distinct())
+        {
+            await _notifications.CreateNotificationAsync(new Notification { UserId = recipientId, Title = "Document shared with you", Message = $"{document.Title} is now available in Shared with Me.", Type = NotificationType.SystemAnnouncement, Priority = NotificationPriority.Informational });
+        }
         return DocumentResult.Succeeded(document);
     }
 
@@ -194,20 +207,25 @@ public sealed class DocumentService : IDocumentService
 
     public Task<int> CountAsync(int requestingUserId, CancellationToken cancellationToken = default) => _authorization.AccessibleDocuments(requestingUserId).CountAsync(cancellationToken);
 
-    private async Task<string?> ValidateRequestAsync(int userId, DocumentUploadRequest request, CancellationToken cancellationToken)
+    private async Task<(string? Error, int? EffectiveProjectId)> ValidateRequestAsync(int userId, DocumentUploadRequest request, CancellationToken cancellationToken)
     {
-        if (request.Content == Stream.Null || request.FileSize <= 0 || request.FileSize > DocumentValidation.MaxFileSizeBytes) return "Files must be between 1 byte and 25 MB.";
-        if (string.IsNullOrWhiteSpace(request.Title)) return "A document title is required.";
-        if (!DocumentValidation.Categories.Contains(request.Category)) return "Choose a valid document category.";
-        if (!DocumentValidation.IsAllowed(request.FileName, request.ContentType)) return "This file type is not supported.";
-        if (request.ProjectId.HasValue && !await _context.Projects.AnyAsync(p => p.ProjectId == request.ProjectId && (p.ProjectManagerId == userId || p.ProjectMembers.Any(pm => pm.UserId == userId)), cancellationToken)) return "You are not a member of the selected project.";
+        if (request.Content == Stream.Null || request.FileSize <= 0 || request.FileSize > DocumentValidation.MaxFileSizeBytes) return ("Files must be between 1 byte and 25 MB.", null);
+        if (string.IsNullOrWhiteSpace(request.Title)) return ("A document title is required.", null);
+        if (!DocumentValidation.Categories.Contains(request.Category)) return ("Choose a valid document category.", null);
+        if (!DocumentValidation.IsAllowed(request.FileName, request.ContentType)) return ("This file type is not supported.", null);
+        int? effectiveProjectId = request.ProjectId;
         if (request.TaskId.HasValue)
         {
             var task = await _context.Tasks.AsNoTracking().FirstOrDefaultAsync(t => t.TaskId == request.TaskId, cancellationToken);
-            if (task == null || task.ProjectId != request.ProjectId) return "The selected task does not belong to the selected project.";
+            if (task?.ProjectId == null) return ("The selected task must belong to a project.", null);
+            if (request.ProjectId.HasValue && request.ProjectId != task.ProjectId) return ("The selected task does not belong to the selected project.", null);
+            effectiveProjectId = task.ProjectId;
         }
-        return null;
+        if (effectiveProjectId.HasValue && !await _context.Projects.AnyAsync(p => p.ProjectId == effectiveProjectId && (p.ProjectManagerId == userId || p.ProjectMembers.Any(pm => pm.UserId == userId)), cancellationToken)) return ("You are not a member of the selected project.", null);
+        return (null, effectiveProjectId);
     }
+
+    private static string SanitizeAuditTitle(string title) => new string(title.Where(character => !char.IsControl(character)).ToArray()).Trim();
 
     private static Expression<Func<Document, DocumentSummary>> ToSummary() => d => new DocumentSummary
     {

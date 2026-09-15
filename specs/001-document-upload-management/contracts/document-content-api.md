@@ -28,6 +28,7 @@ The endpoint MUST call the document service with the current user's integer ID. 
 - `Content-Disposition`: `inline` for supported PDF/JPEG/PNG previews when `download` is false; `attachment` otherwise.
 - `Content-Length`: persisted file size when available.
 - The endpoint MUST use the stored relative storage key, never a client-supplied path or original filename.
+- Department-based shares MUST authorize users by their current `User.Department` value; notification preference does not affect content authorization.
 
 ### Failure responses
 
@@ -48,3 +49,4 @@ The endpoint MUST call the document service with the current user's integer ID. 
 - Do not map the upload root as static content.
 - Return safe content-disposition filenames derived from sanitized original metadata, never filesystem paths.
 - Record successful downloads as `DocumentActivity` after authorization.
+- Delete activity is retained after document deletion with a nullable document relationship and sanitized identifier/title details.

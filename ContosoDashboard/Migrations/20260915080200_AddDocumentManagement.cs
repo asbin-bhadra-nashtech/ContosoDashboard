@@ -284,7 +284,7 @@ namespace ContosoDashboard.Migrations
                 {
                     DocumentShareId = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    DocumentId = table.Column<int>(type: "int", nullable: true),
+                    DocumentId = table.Column<int>(type: "int", nullable: false),
                     SharedWithUserId = table.Column<int>(type: "int", nullable: true),
                     SharedWithDepartment = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     SharedByUserId = table.Column<int>(type: "int", nullable: false),

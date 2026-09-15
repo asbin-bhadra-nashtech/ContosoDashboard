@@ -12,19 +12,13 @@ Add secure, offline-capable document upload and management to the existing Conto
 
 ## Technical Context
 
-<!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
--->
-
 **Language/Version**: C# / .NET 8.0, nullable reference types enabled
 
 **Primary Dependencies**: ASP.NET Core Blazor Server, Entity Framework Core 8 SQL Server provider, existing cookie authentication and Bootstrap UI
 
 **Storage**: SQL Server LocalDB for metadata plus local filesystem under configured `AppData/uploads`; storage and scanning abstractions preserve future Azure migration
 
-**Testing**: `dotnet build` plus focused service, authorization, storage-cleanup, endpoint, and Blazor/manual integration checks; no test project currently exists and one should be introduced for durable automated coverage
+**Testing**: `dotnet build .\ContosoDashboard.sln` plus focused xUnit service/storage tests, protected content endpoint integration tests, and Blazor/manual integration checks in `quickstart.md`
 
 **Target Platform**: Offline Windows training environment with ASP.NET Core server, browser client, and SQL Server LocalDB
 
@@ -32,9 +26,16 @@ Add secure, offline-capable document upload and management to the existing Conto
 
 **Performance Goals**: Upload valid files up to 25 MB within 30 seconds, list up to 500 documents within 2 seconds, search within 2 seconds, and previews within 3 seconds under representative conditions
 
-**Constraints**: Offline-first; local filesystem for training; files outside `wwwroot`; integer document keys; text categories; existing mock claims and role hierarchy; fail closed when scanning is unavailable; no cloud dependency
+**Constraints**: Offline-first; local filesystem for training; files outside `wwwroot`; integer document keys; text categories; existing mock claims and role hierarchy; fail closed when scanning is unavailable; no cloud dependency; one document per submission; task-derived project association; department-based team sharing; retained delete identity in audit details
 
 **Scale/Scope**: Existing seeded users and projects, up to 500 accessible documents per list/search scenario, five priority journeys, and one feature area spanning models, services, pages, dashboard, projects, tasks, notifications, and audit reporting
+
+## Clarified Design Decisions
+
+- Team shares use `User.Department`; access follows the current department and active share state, while notifications go only to eligible users with in-app notifications enabled.
+- Each upload submission contains exactly one document with independent metadata, scanning, progress, transaction, and result state.
+- A selected task is authoritative for project association. Tasks without a project and conflicting client project values are rejected.
+- Delete activity retains sanitized document ID/title details while the nullable `DocumentId` relationship is set to null.
 
 ## Constitution Check
 
@@ -65,12 +66,6 @@ specs/001-document-upload-management/
 ```
 
 ### Source Code (repository root)
-<!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
--->
 
 ```text
 ContosoDashboard/
@@ -79,14 +74,15 @@ ContosoDashboard/
 ├── Services/                                 # IDocumentService, storage, scanner, authorization, audit
 ├── Pages/                                    # Documents, project/task integration, admin audit UI
 ├── Program.cs                                # Dependency injection and protected content endpoint
-└── AppData/uploads/                          # Runtime local storage, outside wwwroot
+├── Migrations/                                # Document schema migration and model snapshot
+└── AppData/uploads/                           # Runtime local storage, outside wwwroot
 
 ContosoDashboard.Tests/                       # New focused automated test project if feasible
 ├── Services/                                 # Validation, authorization, cleanup, reporting tests
 └── Integration/                              # EF/storage/content endpoint checks
 ```
 
-**Structure Decision**: Extend the existing `ContosoDashboard` web project in its established directories. Add a test project only for focused automated coverage; do not introduce a separate backend or frontend application. The feature's design artifacts remain under `specs/001-document-upload-management`.
+**Structure Decision**: Extend the existing `ContosoDashboard` web project in its established directories, keep document binaries behind `IFileStorageService`, and add the existing focused test project for service and endpoint coverage. Do not introduce a separate backend, frontend, team-management entity, or cloud dependency. The feature's design artifacts remain under `specs/001-document-upload-management`.
 
 ## Complexity Tracking
 

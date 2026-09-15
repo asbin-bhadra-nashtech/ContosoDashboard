@@ -76,7 +76,7 @@ namespace ContosoDashboard.Migrations
 
             modelBuilder.Entity("ContosoDashboard.Models.Document", b =>
                 {
-                    b.Property<int?>("DocumentId")
+                    b.Property<int>("DocumentId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
@@ -186,7 +186,7 @@ namespace ContosoDashboard.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("DocumentShareId"));
 
-                    b.Property<int?>("DocumentId")
+                    b.Property<int>("DocumentId")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsActive")

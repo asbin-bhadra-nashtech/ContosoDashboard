@@ -40,10 +40,21 @@ As a Contoso employee, I want to upload a work document with useful metadata so 
 1. **Given** an authenticated employee is on the upload form, **When** they select a supported file no larger than 25 MB, enter a title, choose a category, and submit, **Then** the document is stored and a success message shows the recorded title, category, file size, and upload time.
 2. **Given** an employee selects an unsupported file or a file larger than 25 MB, **When** they submit the upload, **Then** the upload is rejected before storage and a clear correction message identifies the problem.
 3. **Given** an employee uploads a document for an assigned project, **When** the upload completes, **Then** the document is associated with that project and is visible to authorized project members.
- **Document Activity**: An auditable record of a document action, actor, document, timestamp, and relevant access context. Delete activity retains the document identifier and sanitized title in its details after the live document relationship is removed.
+4. **Given** an upload is in progress, **When** the file is being processed, **Then** the user sees progress and cannot mistake an incomplete upload for a completed one.
 
 ---
 
+### User Story 2 - Find and Use Authorized Documents (Priority: P1)
+
+As an employee, I want to browse and search documents I am allowed to access so that I can locate and use information quickly.
+
+**Why this priority**: Reliable retrieval delivers the primary business benefit over scattered storage locations.
+
+**Independent Test**: Seed documents with different categories, projects, dates, tags, and uploaders; sign in as users with different access; verify filtering, sorting, search, download, and preview behavior.
+
+**Acceptance Scenarios**:
+
+1. **Given** a user has uploaded documents, **When** they open My Documents, **Then** they see title, category, upload date, file size, and associated project and can sort by title, date, category, or size.
 2. **Given** a user has access to documents from projects or sharing, **When** they filter by category, project, or date range, **Then** only matching authorized documents are listed.
 3. **Given** a user searches by title, description, tag, uploader, or project, **When** matching documents exist, **Then** authorized matches are returned within 2 seconds.
 4. **Given** a user can access a PDF or image, **When** they choose preview, **Then** the document opens in the browser within 3 seconds; downloadable documents can be downloaded directly.

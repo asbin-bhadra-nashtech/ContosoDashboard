@@ -42,10 +42,10 @@ description: "Task list for Document Upload and Management"
 **Independent Test**: Sign in as an employee, upload a supported file under 25 MB with a title and category, and verify metadata, storage, project association, success feedback, and rejection of invalid files.
 
 - [X] T013 [US1] Define upload metadata, validation result, and document summary DTOs in `ContosoDashboard/Services/DocumentContracts.cs`
-- [X] T014 [US1] Implement `IDocumentService.UploadAsync` in `ContosoDashboard/Services/DocumentService.cs` with authenticated-user checks, metadata validation, extension/MIME and 25 MB validation, project/task authorization, and task-project consistency
-- [X] T015 [US1] Implement the upload transaction in `ContosoDashboard/Services/DocumentService.cs` as validate, scan, generate GUID key, save file, persist metadata/activity, and clean up the file when persistence fails
-- [X] T016 [US1] Add the protected upload form with title, description, approved category, project, task, tags, file selection, progress state, and success/error feedback in `ContosoDashboard/Pages/Documents.razor`
-- [X] T017 [US1] Implement the Blazor `InputFile` memory-copy lifecycle with metadata captured before opening the stream, a 25 MB read limit, cleared file reference, and `@key` reset in `ContosoDashboard/Pages/Documents.razor`
+- [X] T014 [US1] Implement `IDocumentService.UploadAsync` in `ContosoDashboard/Services/DocumentService.cs` with authenticated-user checks, metadata validation, extension/MIME and 25 MB validation, task-derived project authorization, rejection of missing-project tasks, and rejection of conflicting client project values
+- [X] T015 [US1] Implement the one-document upload transaction in `ContosoDashboard/Services/DocumentService.cs` as validate, scan, generate GUID key, save file, persist metadata/activity atomically, and clean up temporary/stored content when persistence fails
+- [X] T016 [US1] Add the protected single-document upload form with title, description, approved category, project/task selection, tags, file selection, explicit upload/scanning/storage progress states, and success/error feedback in `ContosoDashboard/Pages/Documents.razor`
+- [X] T017 [US1] Implement the Blazor `InputFile` lifecycle in `ContosoDashboard/Pages/Documents.razor` with metadata captured before opening the stream, a 25 MB read limit, bounded progress reporting, cleared file reference, and `@key` reset
 - [X] T018 [US1] Add employee navigation to the document page and protected route handling in `ContosoDashboard/Shared/NavMenu.razor` and `ContosoDashboard/Pages/Documents.razor`
 - [X] T019 [US1] Add upload validation and authorization failure messages that never expose filesystem paths or internal exceptions in `ContosoDashboard/Pages/Documents.razor` and `ContosoDashboard/Services/DocumentService.cs`
 
@@ -76,8 +76,8 @@ description: "Task list for Document Upload and Management"
 - [X] T027 [US3] Implement metadata update, replacement, permanent delete, and share operations with owner/project-manager/administrator authorization in `ContosoDashboard/Services/DocumentService.cs`
 - [X] T028 [US3] Implement replacement rollback and deletion cleanup so failed replacements preserve the old file and successful deletion removes metadata and binary content in `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Services/LocalFileStorageService.cs`
 - [X] T029 [US3] Persist active user/team shares with recipient validation and duplicate prevention in `ContosoDashboard/Models/Document.cs` and `ContosoDashboard/Data/ApplicationDbContext.cs`
-- [X] T030 [US3] Create share and project-document notifications through `INotificationService` in `ContosoDashboard/Services/DocumentService.cs`, including recipient and eligible project-member selection
-- [X] T031 [US3] Add edit metadata, replace file, delete confirmation, and share recipient controls to `ContosoDashboard/Pages/Documents.razor`
+- [X] T030 [US3] Create direct-user and department-share notifications through `INotificationService` in `ContosoDashboard/Services/DocumentService.cs`, notifying each eligible department user with in-app notifications enabled exactly once
+- [X] T031 [US3] Add edit metadata, replace file, delete confirmation, direct-user/department recipient controls, and clear management feedback to `ContosoDashboard/Pages/Documents.razor`
 - [X] T032 [US3] Add Shared with Me filtering and document access state to `ContosoDashboard/Pages/Documents.razor`
 - [X] T033 [US3] Add clear management authorization, invalid recipient, replacement failure, and deletion feedback in `ContosoDashboard/Pages/Documents.razor`
 
@@ -92,7 +92,7 @@ description: "Task list for Document Upload and Management"
 - [X] T034 [US4] Include authorized project documents and document summaries in `ContosoDashboard/Services/ProjectService.cs` and `ContosoDashboard/Pages/ProjectDetails.razor`
 - [X] T035 [US4] Add task document association and upload entry points while enforcing the task's project association in `ContosoDashboard/Services/TaskService.cs` and `ContosoDashboard/Pages/Tasks.razor`
 - [X] T036 [US4] Add recent five uploads and document count fields to `ContosoDashboard/Services/DashboardService.cs` and render the widget/summary in `ContosoDashboard/Pages/Index.razor`
-- [X] T037 [US4] Ensure project-document notifications are emitted once for eligible members and reuse existing notification preferences in `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Services/NotificationService.cs`
+- [X] T037 [US4] Ensure project-document and department-share notifications are emitted once for eligible recipients and reuse existing notification preferences in `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Services/NotificationService.cs`
 - [X] T038 [US4] Add project/task/dashboard document empty, loading, access-denied, and success states in `ContosoDashboard/Pages/ProjectDetails.razor`, `ContosoDashboard/Pages/Tasks.razor`, and `ContosoDashboard/Pages/Index.razor`
 
 **Checkpoint**: Project and task users can work with related documents in context, and the dashboard surfaces recent document activity.
@@ -103,8 +103,7 @@ description: "Task list for Document Upload and Management"
 
 **Independent Test**: Perform upload, download, replacement, share, and delete actions as multiple users, then verify administrator activity/report results and non-administrator denial.
 
-- [X] T039 [US5] Record upload, download, replacement, metadata update, share, and delete activities with actor, document, UTC time, and context in `ContosoDashboard/Services/DocumentService.cs` and the `DocumentActivity` entity
-- [X] T040 [US5] Implement administrator-only activity queries and reports for document types, active uploaders, and access patterns in `ContosoDashboard/Services/DocumentAuditService.cs`
+ [X] T039 [US5] Record upload, download, replacement, metadata update, share, and delete activities with actor, document, UTC time, and context; retain sanitized document ID/title JSON for deletes in `ContosoDashboard/Services/DocumentService.cs` and `ContosoDashboard/Models/Document.cs`
 - [X] T041 [US5] Add the administrator-protected audit page with activity filters, report summaries, loading/error states, and denial handling in `ContosoDashboard/Pages/DocumentAudit.razor`
 - [X] T042 [US5] Add administrator navigation and role enforcement for audit reporting in `ContosoDashboard/Shared/NavMenu.razor` and `ContosoDashboard/Pages/DocumentAudit.razor`
 
@@ -114,11 +113,11 @@ description: "Task list for Document Upload and Management"
 
 **Purpose**: Validate security, performance, offline behavior, and documentation across all stories.
 
-- [X] T043 [P] Add service-level authorization, validation, upload-cleanup, replacement-rollback, and share-notification tests in `ContosoDashboard.Tests/Services/DocumentServiceTests.cs`
+- [X] T043 [P] Add service-level authorization, validation, task-derived project, upload-cleanup, replacement-rollback, department-notification, and share tests in `ContosoDashboard.Tests/Services/DocumentServiceTests.cs`
 - [X] T044 [P] Add storage path traversal, GUID naming, stream copy, delete, and scanner fail-closed tests in `ContosoDashboard.Tests/Services/FileStorageServiceTests.cs`
-- [ ] T045 [P] Add protected content endpoint tests for authorized access, unauthorized non-disclosure, preview disposition, download disposition, and missing documents in `ContosoDashboard.Tests/Integration/DocumentContentEndpointTests.cs`
+- [X] T045 [P] Add protected content endpoint tests for authorized access, unauthorized non-disclosure, department-share authorization, preview disposition, download disposition, and missing documents in `ContosoDashboard.Tests/Integration/DocumentContentEndpointTests.cs`
 - [X] T046 Add EF migration or controlled schema initialization for document entities and indexes in `ContosoDashboard/Data/ApplicationDbContext.cs` and the repository database setup
-- [ ] T047 Run the scenarios in `specs/001-document-upload-management/quickstart.md`, including representative 500-document list/search timing and 25 MB upload timing, and record any deviations
+- [ ] T047 Run the scenarios in `specs/001-document-upload-management/quickstart.md`, including one-file progress, task-derived project assignment, department notifications, retained delete audit identity, representative 500-document list/search timing, and 25 MB upload timing, and record deviations
 - [X] T048 Run `dotnet build .\ContosoDashboard\` and the focused test project, then fix feature-related failures without changing unrelated behavior
 - [X] T049 [P] Review `README.md` and `specs/001-document-upload-management/quickstart.md` for training-only mock authentication, scanner limitations, offline storage, reset instructions, and Azure migration boundaries
 - [X] T050 Review all document routes and service methods for IDOR, path traversal, MIME spoofing, unauthorized metadata leakage, and missing audit events; record results in `specs/001-document-upload-management/checklists/security.md`

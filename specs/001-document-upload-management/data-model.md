@@ -18,7 +18,7 @@ Represents one uploaded work document and its searchable metadata.
 | UploadedDate | UTC datetime | Required |
 | UploadedByUserId | integer | Required foreign key to User |
 | ProjectId | integer? | Optional foreign key to Project |
-| TaskId | integer? | Optional foreign key to TaskItem; task association implies its project |
+| TaskId | integer? | Optional foreign key to TaskItem; when present, the task must have a project and its project becomes the document's ProjectId |
 
 ## DocumentShare
 
@@ -29,7 +29,7 @@ Represents explicit access granted by a document owner.
 | DocumentShareId | integer | Primary key |
 | DocumentId | integer | Required foreign key to Document |
 | SharedWithUserId | integer? | Optional recipient user |
-| SharedWithTeam/Department | string? | Optional team/department recipient |
+| SharedWithDepartment | string? | Optional recipient department based on the existing User.Department value |
 | SharedByUserId | integer | Required owner performing the share |
 | SharedDate | UTC datetime | Required |
 | IsActive | boolean | False when access is revoked or recipient is invalidated |
@@ -47,7 +47,7 @@ Durable audit record for document actions.
 | UserId | integer | Required actor foreign key to User |
 | Action | string | Required; Upload, Download, Delete, Share, Replace, or MetadataUpdate |
 | OccurredDate | UTC datetime | Required UTC timestamp |
-| Details | string? | Optional bounded context such as recipient or source project |
+| Details | string? | Optional bounded context; delete events retain sanitized document ID/title JSON |
 
 ## Relationships
 
@@ -67,15 +67,16 @@ Durable audit record for document actions.
 4. Active share recipients can read, preview, and download explicitly shared documents.
 5. Administrators can read and manage all documents and audit data.
 6. Every rule is evaluated by the service before metadata or file content is returned.
+7. A department share grants access based on the recipient's current department and active share state, regardless of notification preference.
 
 ## Validation and Lifecycle
 
 1. Validate authenticated user, metadata, extension/MIME allowlist, and 25 MB limit.
-2. Validate project/task access and ensure a task's project matches the selected project.
+2. If a task is selected, derive the project from that task, reject tasks without a project, and reject conflicting client project values. If no task is selected, a direct project association is optional.
 3. Scan the file; reject on unsafe or unavailable scan result.
 4. Generate a GUID-based relative storage key.
 5. Save the file to local storage.
 6. Persist `Document` and `DocumentActivity`; clean up the stored file if persistence fails.
 7. Notify eligible project members or share recipients after successful persistence.
 8. On replacement, keep the old file until the new file is validated, scanned, stored, and metadata committed.
-9. On permanent deletion, authorize first, remove the metadata and stored file, and record the activity according to the chosen delete ordering.
+9. On permanent deletion, authorize first, capture sanitized document ID/title audit details, remove the metadata and stored file, and retain the activity with its nullable document relationship set to null.
